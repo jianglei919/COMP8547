@@ -1,0 +1,225 @@
+    // ===== Experiment Parameters =====
+    // Small-scale dataset size, fixed at 100
+    private static final int N_SMALL = 100;
+    // Large-scale dataset size, set to 1200 here (represents "1000+").
+    // This value can be adjusted to 1000 or 10000 as needed.
+    private static final int N_LARGE = 1200;
+    // Number of repeated trials for each experiment to reduce variance.
+    // Here set to 3 to take the average.
+    private static final int TRIALS = 3;
+
+    // Random seed for generating insertion keys (ensures reproducibility)
+    private static final long SEED_INSERT = 20250924L;
+    // Random seed for generating query keys (ensures reproducibility)
+    private static final long SEED_QUERY = 20250925L;
+
+    /**
+     * Timing Result Container
+     * Stores the total execution time (in nanoseconds) of insertion, search, and deletion for a single trial
+     */
+    private static class Timings {
+        long insertNs; // total insertion time
+        long searchNs; // total search time
+        long deleteNs; // total deletion time
+    }
+
+    /**
+     * Benchmark Execution
+     * Executes one full trial consisting of Insert -> Search -> Delete, and returns the cumulative timing results. Can be repeated multiple times.
+     * @param tree : specific tree implementation (BST / AVL / Red-Black / Splay)
+     * @param asc : sorted ascending keys for insertion (worst-case for unbalanced BST)
+     * @param desc : sorted descending keys for deletion
+     * @param queries : query array with 50% hits and 50% misses
+     * @param trials : number of repeated runs
+     * @return
+     */
+    private static Timings benchTree(TreeInterface tree,
+                                     long[] asc, long[] desc, long[] queries,
+                                     int trials) {
+        Timings total = new Timings();
+        for (int t = 0; t < trials; t++) {
+            // Insertion phase: insert keys sequentially in ascending order
+            long start = System.nanoTime();
+            for (long k : asc) {
+                tree.insert(k);
+            }
+            long insertNs = System.nanoTime() - start;
+
+            // Search phase: perform lookups for all queries
+            // queries array contains a balanced mix of hits and misses
+            start = System.nanoTime();
+            for (long q : queries) {
+                tree.search(q);
+            }
+            long searchNs = System.nanoTime() - start;
+
+            // Deletion phase: remove all keys sequentially in descending order
+            start = System.nanoTime();
+            for (long k : desc) {
+                tree.delete(k);
+            }
+            long deleteNs = System.nanoTime() - start;
+
+            // Accumulate timing results across trials
+            total.insertNs += insertNs;
+            total.searchNs += searchNs;
+            total.deleteNs += deleteNs;
+            // After deletion, the tree is empty; no explicit clear() is required
+        }
+        return total;
+    }
+
+    /**
+     * Generate Unique Random Keys
+     * Each integer has between 7 and 10 digits.
+     * @param n
+     * @return an array of n unique random long integers.
+     */
+    private static long[] genUniqueKeys(int n) {
+        Random rnd = new Random(SEED_INSERT);
+        HashSet<Long> set = new HashSet<>(n * 2); // ensure uniqueness of keys
+        while (set.size() < n) {
+            int digits = 7 + rnd.nextInt(4); // randomly choose 7–10 digits
+            long low = pow10(digits - 1);    // minimum value of this digit length
+            long high = pow10(digits) - 1;   // maximum value of this digit length
+            long span = high - low + 1;
+            // Generate a random number in the range [low, high]
+            long v = low + Math.floorMod(rnd.nextLong(), span);
+            set.add(v);
+        }
+        // Convert the HashSet into an array
+        long[] arr = new long[n];
+        int i = 0;
+        for (Long x : set) {
+            arr[i++] = x;
+        }
+        return arr;
+    }
+
+    /**
+     * Computes 10^e, e.g., pow10(3) = 1000
+     * @param e
+     * @return
+     */
+    private static long pow10(int e) {
+        long v = 1;
+        for (int i = 0; i < e; i++) {
+            v *= 10L;
+        }
+        return v;
+    }
+
+    /**
+     * Reverses the array in place (used to create descending order sequence)
+     * @param a
+     */
+    private static void reverse(long[] a) {
+        for (int i = 0, j = a.length - 1; i < j; i++, j--) {
+            long tmp = a[i];
+            a[i] = a[j];
+            a[j] = tmp;
+        }
+    }
+
+    /**
+     * Build Query Set
+     * Constructs a query array of size n with the following properties:
+     * - 50% hit queries (keys that exist in the tree)
+     * - 50% miss queries (keys not present in the tree)
+     * - The final query order is randomized to avoid bias
+     * @param insertedAsc
+     * @param n
+     * @return
+     */
+    private static long[] buildQueries(long[] insertedAsc, int n) {
+        // Use fixed random seed to ensure reproducibility
+        Random rnd = new Random(SEED_QUERY);
+
+        // Number of hit queries
+        int hitCount = n / 2;
+
+        // Store the combined query set
+        ArrayList<Long> queries = new ArrayList<>(n);
+
+        // ================= Step 1: Select Hit Queries =================
+        // Randomly sample hitCount elements from the insertedAsc array
+
+        int m = insertedAsc.length;
+        // Build index array [0, 1, ..., m-1]
+        int[] idx = new int[m];
+        for (int i = 0; i < m; i++) {
+            idx[i] = i;
+        }
+
+        // Shuffle the index array using Fisher–Yates algorithm
+        for (int i = m - 1; i > 0; i--) {
+            int j = rnd.nextInt(i + 1);  // random index in [0, i]
+            int tmp = idx[i];
+            idx[i] = idx[j];
+            idx[j] = tmp;
+        }
+
+        // Select the first hitCount indices as hit queries
+        for (int i = 0; i < hitCount; i++) {
+            queries.add(insertedAsc[idx[i]]);
+        }
+
+        // ================= Step 2: Generate Miss Queries =================
+        // Miss queries must not overlap with any inserted key
+        HashSet<Long> used = new HashSet<>();
+        for (long v : insertedAsc) {
+            used.add(v);
+        }
+
+        // Generate random keys until the query set reaches size n
+        while (queries.size() < n) {
+            // (a) Randomly choose digit length 7–10
+            int digits = 7 + rnd.nextInt(4);
+
+            // (b) Calculate the numeric range for this digit length
+            long low = pow10(digits - 1);
+            long high = pow10(digits) - 1;
+            long span = high - low + 1;
+
+            // (c) Generate a random number within [low, high]
+            long v = low + Math.floorMod(rnd.nextLong(), span);
+
+            // (d) Ensure the number is not in the inserted set
+            if (!used.contains(v)) {
+                queries.add(v); // guaranteed miss
+            }
+        }
+
+        // ================= Step 3: Shuffle Query Order =================
+        // At this point, queries contain half hits followed by half misses.
+        // Shuffle the entire list to randomize order.
+        Collections.shuffle(queries, rnd);
+
+        // ================= Return Result =================
+        long[] q = new long[n];
+        for (int i = 0; i < n; i++) {
+            q[i] = queries.get(i);
+        }
+        return q;
+    }
+
+    /**
+     * Print Results Table
+     * Print table header with dataset size and column titles
+     * @param n
+     */
+    private static void printHeader(int n) {
+        System.out.println("\n========================== n = " + n + " ==========================");
+        System.out.printf("%-10s %16s %16s %16s%n",
+                "Tree", "Insert (ns)", "Search (ns)", "Delete (ns)");
+    }
+
+    /**
+     * Print a single row with the timing results of one tree
+     * @param name
+     * @param t
+     */
+    private static void printRow(String name, Timings t) {
+        System.out.printf("%-10s %16d %16d %16d%n",
+                name, t.insertNs, t.searchNs, t.deleteNs);
+    }

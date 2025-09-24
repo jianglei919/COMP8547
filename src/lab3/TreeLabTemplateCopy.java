@@ -2,98 +2,87 @@ package lab3;
 
 import java.util.*;
 
-public class TreeLabTemplate {
+public class TreeLabTemplateCopy {
 
-    // ===== Experiment Parameters =====
-    // Small-scale dataset size, fixed at 100
+    // ===== 实验参数 =====
+    // 小规模实验数据量，固定为 100
     private static final int N_SMALL = 100;
-    // Large-scale dataset size, set to 1200 here (represents "1000+").
-    // This value can be adjusted to 1000 or 10000 as needed.
+    // 大规模实验数据量，这里设置为 1200（即“1000+”的意思，可以根据需要改为 1000 或 10000）
     private static final int N_LARGE = 1200;
-    // Number of repeated trials for each experiment to reduce variance.
-    // Here set to 3 to take the average.
+    // 每组实验重复次数，用于减少偶然误差，这里设为 3 次取平均
     private static final int TRIALS = 3;
 
-    // Random seed for generating insertion keys (ensures reproducibility)
+    // 随机数种子，用于生成插入键，保证实验可复现
     private static final long SEED_INSERT = 20250924L;
-    // Random seed for generating query keys (ensures reproducibility)
+    // 随机数种子，用于生成查询键，保证查询数据可复现
     private static final long SEED_QUERY = 20250925L;
 
-    /**
-     * Timing Result Container
-     * Stores the total execution time (in nanoseconds) of insertion, search, and deletion for a single trial
-     */
+    // ===== 计时结果容器 =====
+    // 用于保存单轮实验中 插入/查找/删除 三个操作的总耗时（纳秒）
     private static class Timings {
-        long insertNs; // total insertion time
-        long searchNs; // total search time
-        long deleteNs; // total deletion time
+        long insertNs; // 插入总耗时
+        long searchNs; // 查找总耗时
+        long deleteNs; // 删除总耗时
     }
 
-    /**
-     * Benchmark Execution
-     * Executes one full trial consisting of Insert -> Search -> Delete, and returns the cumulative timing results. Can be repeated multiple times.
-     * @param tree : specific tree implementation (BST / AVL / Red-Black / Splay)
-     * @param asc : sorted ascending keys for insertion (worst-case for unbalanced BST)
-     * @param desc : sorted descending keys for deletion
-     * @param queries : query array with 50% hits and 50% misses
-     * @param trials : number of repeated runs
-     * @return
-     */
+    // ===== 基准执行：一次 trial 覆盖 插入->查找->删除，返回总用时（可多次试验累加）=====
+    // 参数说明：
+    // tree   : 具体的树实现（BST/AVL/RedBlack/Splay）
+    // asc    : 升序排列的插入键（模拟最坏情况）
+    // desc   : 降序排列的删除键
+    // queries: 查找操作的查询键数组（50%命中，50%未命中）
+    // trials : 重复实验次数
     private static Timings benchTree(TreeInterface tree,
                                      long[] asc, long[] desc, long[] queries,
                                      int trials) {
         Timings total = new Timings();
         for (int t = 0; t < trials; t++) {
-            // Insertion phase: insert keys sequentially in ascending order
+            // 插入阶段：按升序逐个插入
             long start = System.nanoTime();
             for (long k : asc) {
                 tree.insert(k);
             }
             long insertNs = System.nanoTime() - start;
 
-            // Search phase: perform lookups for all queries
-            // queries array contains a balanced mix of hits and misses
+            // 查找阶段：对 queries 数组里的键逐个执行 search()
+            // queries 已经预先混合了命中与未命中的键
             start = System.nanoTime();
             for (long q : queries) {
                 tree.search(q);
             }
             long searchNs = System.nanoTime() - start;
 
-            // Deletion phase: remove all keys sequentially in descending order
+            // 删除阶段：按降序逐个删除所有键
             start = System.nanoTime();
             for (long k : desc) {
                 tree.delete(k);
             }
             long deleteNs = System.nanoTime() - start;
 
-            // Accumulate timing results across trials
+            // 累加三类操作的耗时
             total.insertNs += insertNs;
             total.searchNs += searchNs;
             total.deleteNs += deleteNs;
-            // After deletion, the tree is empty; no explicit clear() is required
+            // 删除完成后树已为空，不需要额外清理
         }
         return total;
     }
 
-    /**
-     * Generate Unique Random Keys
-     * Each integer has between 7 and 10 digits.
-     * @param n
-     * @return an array of n unique random long integers.
-     */
+    // ===== 生成 n 个唯一 long 键（7–10 位），与树实现解耦 =====
+    // 返回一个包含 n 个唯一随机 long 整数的数组，每个整数的位数在 7~10 位之间
     private static long[] genUniqueKeys(int n) {
         Random rnd = new Random(SEED_INSERT);
-        HashSet<Long> set = new HashSet<>(n * 2); // ensure uniqueness of keys
+        HashSet<Long> set = new HashSet<>(n * 2); // 用于去重，避免重复键
         while (set.size() < n) {
-            int digits = 7 + rnd.nextInt(4); // randomly choose 7–10 digits
-            long low = pow10(digits - 1);    // minimum value of this digit length
-            long high = pow10(digits) - 1;   // maximum value of this digit length
+            int digits = 7 + rnd.nextInt(4); // 随机选择 7~10 位
+            long low = pow10(digits - 1);    // 该位数的最小值，例如 7 位数就是 1,000,000
+            long high = pow10(digits) - 1;   // 该位数的最大值，例如 7 位数就是 9,999,999
             long span = high - low + 1;
-            // Generate a random number in the range [low, high]
+            // 使用随机 long 取模的方式保证落在 [low, high] 区间
             long v = low + Math.floorMod(rnd.nextLong(), span);
             set.add(v);
         }
-        // Convert the HashSet into an array
+        // 将 HashSet 转为数组
         long[] arr = new long[n];
         int i = 0;
         for (Long x : set) {
@@ -102,11 +91,7 @@ public class TreeLabTemplate {
         return arr;
     }
 
-    /**
-     * Computes 10^e, e.g., pow10(3) = 1000
-     * @param e
-     * @return
-     */
+    // 计算 10 的 e 次方，例如 pow10(3) = 1000
     private static long pow10(int e) {
         long v = 1;
         for (int i = 0; i < e; i++) {
@@ -115,10 +100,7 @@ public class TreeLabTemplate {
         return v;
     }
 
-    /**
-     * Reverses the array in place (used to create descending order sequence)
-     * @param a
-     */
+    // 数组反转，用于得到降序序列
     private static void reverse(long[] a) {
         for (int i = 0, j = a.length - 1; i < j; i++, j--) {
             long tmp = a[i];
@@ -127,81 +109,79 @@ public class TreeLabTemplate {
         }
     }
 
-    /**
-     * Build Query Set
-     * Constructs a query array of size n with the following properties:
-     * - 50% hit queries (keys that exist in the tree)
-     * - 50% miss queries (keys not present in the tree)
-     * - The final query order is randomized to avoid bias
-     * @param insertedAsc
-     * @param n
-     * @return
-     */
+    // ===== 构造查询集合 =====
+// 要求：构造一个大小为 n 的查询数组，其中
+//       - 一半（50%）是命中项（即确实存在于已插入的树中）
+//       - 一半（50%）是未命中项（即不在树中）
+//       - 最终顺序随机打乱，避免命中和未命中分布不均
     private static long[] buildQueries(long[] insertedAsc, int n) {
-        // Use fixed random seed to ensure reproducibility
+        // 使用固定随机种子，保证实验结果可复现
         Random rnd = new Random(SEED_QUERY);
 
-        // Number of hit queries
+        // 命中查询数量 = n/2
         int hitCount = n / 2;
 
-        // Store the combined query set
+        // 用于保存最终的查询集合（命中 + 未命中）
         ArrayList<Long> queries = new ArrayList<>(n);
 
-        // ================= Step 1: Select Hit Queries =================
-        // Randomly sample hitCount elements from the insertedAsc array
+        // ================= Step 1: 采样命中项 =================
+        // 从已插入的升序数组 insertedAsc 中，随机抽取 hitCount 个元素作为命中查询
 
         int m = insertedAsc.length;
-        // Build index array [0, 1, ..., m-1]
+        // 先构建一个索引数组 [0, 1, 2, ..., m-1]
         int[] idx = new int[m];
         for (int i = 0; i < m; i++) {
             idx[i] = i;
         }
 
-        // Shuffle the index array using Fisher–Yates algorithm
+        // 打乱索引数组（Fisher–Yates 洗牌算法），保证抽样是随机的
         for (int i = m - 1; i > 0; i--) {
-            int j = rnd.nextInt(i + 1);  // random index in [0, i]
+            int j = rnd.nextInt(i + 1);  // 随机选 [0, i] 范围的索引
             int tmp = idx[i];
             idx[i] = idx[j];
             idx[j] = tmp;
         }
 
-        // Select the first hitCount indices as hit queries
+        // 从打乱后的索引中取前 hitCount 个位置对应的键作为命中查询
         for (int i = 0; i < hitCount; i++) {
             queries.add(insertedAsc[idx[i]]);
         }
 
-        // ================= Step 2: Generate Miss Queries =================
-        // Miss queries must not overlap with any inserted key
+        // ================= Step 2: 生成未命中项 =================
+        // 未命中项必须保证“不在已插入的集合中”
         HashSet<Long> used = new HashSet<>();
         for (long v : insertedAsc) {
-            used.add(v);
+            used.add(v); // 存储已插入键，便于快速查重
         }
 
-        // Generate random keys until the query set reaches size n
+        // 不断生成随机数，直到 queries 填满 n 个元素为止
         while (queries.size() < n) {
-            // (a) Randomly choose digit length 7–10
-            int digits = 7 + rnd.nextInt(4);
+            // (a) 随机决定生成 7~10 位的数
+            int digits = 7 + rnd.nextInt(4); // 7, 8, 9, 10
 
-            // (b) Calculate the numeric range for this digit length
-            long low = pow10(digits - 1);
-            long high = pow10(digits) - 1;
+            // (b) 计算该位数的取值范围
+            long low = pow10(digits - 1);  // 例如 7 位数：1,000,000
+            long high = pow10(digits) - 1;  // 例如 7 位数：9,999,999
             long span = high - low + 1;
 
-            // (c) Generate a random number within [low, high]
+            // (c) 随机生成一个落在 [low, high] 的数 v
             long v = low + Math.floorMod(rnd.nextLong(), span);
 
-            // (d) Ensure the number is not in the inserted set
+            // (d) 检查是否已经在 used（已插入集合）中
+            //     - 如果存在：说明是命中项，跳过
+            //     - 如果不存在：说明是未命中项，加入 queries
             if (!used.contains(v)) {
-                queries.add(v); // guaranteed miss
+                queries.add(v); // 确保是未命中查询
             }
         }
 
-        // ================= Step 3: Shuffle Query Order =================
-        // At this point, queries contain half hits followed by half misses.
-        // Shuffle the entire list to randomize order.
+        // ================= Step 3: 打乱顺序 =================
+        // 经过前两步，queries 中有一半命中 + 一半未命中，但顺序是“命中在前，未命中在后”
+        // 为避免顺序偏差，用 Collections.shuffle 随机打乱查询顺序
         Collections.shuffle(queries, rnd);
 
-        // ================= Return Result =================
+        // ================= 返回结果 =================
+        // 转换为数组形式，方便后续遍历
         long[] q = new long[n];
         for (int i = 0; i < n; i++) {
             q[i] = queries.get(i);
@@ -209,30 +189,23 @@ public class TreeLabTemplate {
         return q;
     }
 
-    /**
-     * Print Results Table
-     * Print table header with dataset size and column titles
-     * @param n
-     */
+    // ===== 打印表格 =====
+    // 打印表头，包含 n 的大小以及列名
     private static void printHeader(int n) {
         System.out.println("\n========================== n = " + n + " ==========================");
         System.out.printf("%-10s %16s %16s %16s%n",
                 "Tree", "Insert (ns)", "Search (ns)", "Delete (ns)");
     }
 
-    /**
-     * Print a single row with the timing results of one tree
-     * @param name
-     * @param t
-     */
+    // 打印单行结果，显示某棵树的插入/查找/删除耗时
     private static void printRow(String name, Timings t) {
         System.out.printf("%-10s %16d %16d %16d%n",
                 name, t.insertNs, t.searchNs, t.deleteNs);
     }
 
-    // ===== Main Entry Point =====
+    // 主函数入口
     public static void main(String[] args) {
-        // Initialize four tree implementations
+        // 初始化四棵树的实例（对应四种不同实现）
         TreeInterface[] trees = {
                 new BinarySearchTree(),
                 new AVLTree(),
@@ -241,27 +214,27 @@ public class TreeLabTemplate {
         };
         String[] names = {"BST", "AVL", "RedBlack", "Splay"};
 
-        final int[] NS = {N_SMALL, N_LARGE}; // dataset sizes: 100 and 1200
+        final int[] NS = {N_SMALL, N_LARGE}; // 数据规模数组，100 与 1200
         for (int n : NS) {
-            // Step 1: Generate n unique random keys
+            // Step 1: 生成 n 个唯一随机键
             long[] raw = genUniqueKeys(n);
             long[] asc = Arrays.copyOf(raw, raw.length);
-            Arrays.sort(asc); // ascending order
+            Arrays.sort(asc); // 升序
             long[] desc = Arrays.copyOf(asc, asc.length);
-            reverse(desc); // descending order
+            reverse(desc); // 降序
 
-            // Step 2: Build query set (50% hits + 50% misses, shuffled)
+            // Step 2: 构造查询集，50%命中 + 50%未命中，顺序随机
             long[] queries = buildQueries(asc, n);
 
-            // Step 3: Print header for this dataset size
+            // Step 3: 打印表头
             printHeader(n);
 
-            // Step 4: Benchmark each tree and print results
+            // Step 4: 对四棵树依次执行基准测试，并打印结果
             for (int i = 0; i < trees.length; i++) {
                 Timings t = benchTree(trees[i], asc, desc, queries, TRIALS);
                 printRow(names[i], t);
             }
-            System.out.println(); // separate outputs between dataset sizes
+            System.out.println(); // 空行分隔不同规模的实验结果
         }
     }
 
