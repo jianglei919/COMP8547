@@ -1,0 +1,15 @@
+    public static final int MAX_COUNT = 500;
+    public void insertKeys(int count) {
+            Random random = new Random(2025L);
+            Set<Integer> set = new HashSet<>(count * 2);
+            while (set.size() < count) {
+                set.add(nextKey(random));
+            }
+            for (int v : set) {
+                insert(v);
+            }
+    }
+
+    public static int nextKey(Random random) {
+        return  (random.nextInt() & Integer.MAX_VALUE) % Integer.MAX_VALUE + 1; //Transform negative numbers into positive numbers, and Modulo operation, limiting the range to [0, upper -1]
+    }
