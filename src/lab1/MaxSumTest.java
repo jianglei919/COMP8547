@@ -1,0 +1,240 @@
+package lab1;
+
+import java.util.Random;
+
+public final class MaxSumTest {
+    static private int seqStart = 0;
+    static private int seqEnd = -1;
+
+    /**
+     * Cubic maximum contiguous subsequence sum algorithm.
+     * seqStart and seqEnd represent the actual best sequence.
+     */
+    public static int maxSubSum1(int[] a) {
+        int maxSum = 0;
+
+        for (int i = 0; i < a.length; i++)
+            for (int j = i; j < a.length; j++) {
+                int thisSum = 0;
+
+                for (int k = i; k <= j; k++)
+                    thisSum += a[k];
+
+                if (thisSum > maxSum) {
+                    maxSum = thisSum;
+                    seqStart = i;
+                    seqEnd = j;
+                }
+            }
+
+        return maxSum;
+    }
+
+    /**
+     * Quadratic maximum contiguous subsequence sum algorithm.
+     * seqStart and seqEnd represent the actual best sequence.
+     */
+    public static int maxSubSum2(int[] a) {
+        int maxSum = 0;
+
+        for (int i = 0; i < a.length; i++) {
+            int thisSum = 0;
+            for (int j = i; j < a.length; j++) {
+                thisSum += a[j];
+
+                if (thisSum > maxSum) {
+                    maxSum = thisSum;
+                    seqStart = i;
+                    seqEnd = j;
+                }
+            }
+        }
+
+        return maxSum;
+    }
+
+    /**
+     * Linear-time maximum contiguous subsequence sum algorithm.
+     * seqStart and seqEnd represent the actual best sequence.
+     */
+    public static int maxSubSum4(int[] a) {
+        int maxSum = 0;
+        int thisSum = 0;
+
+        for (int i = 0, j = 0; j < a.length; j++) {
+            thisSum += a[j];
+
+            if (thisSum > maxSum) {
+                maxSum = thisSum;
+                seqStart = i;
+                seqEnd = j;
+            } else if (thisSum < 0) {
+                i = j + 1;
+                thisSum = 0;
+            }
+        }
+
+        return maxSum;
+    }
+
+    /**
+     * Recursive maximum contiguous subsequence sum algorithm.
+     * Finds maximum sum in subarray spanning a[left..right].
+     * Does not attempt to maintain actual best sequence.
+     */
+    private static int maxSumRec(int[] a, int left, int right) {
+        int maxLeftBorderSum = 0, maxRightBorderSum = 0;
+        int leftBorderSum = 0, rightBorderSum = 0;
+        int center = (left + right) / 2;
+
+        if (left == right) // Base case
+            return a[left] > 0 ? a[left] : 0;
+
+        int maxLeftSum = maxSumRec(a, left, center);
+        int maxRightSum = maxSumRec(a, center + 1, right);
+
+        for (int i = center; i >= left; i--) {
+            leftBorderSum += a[i];
+            if (leftBorderSum > maxLeftBorderSum)
+                maxLeftBorderSum = leftBorderSum;
+        }
+
+        for (int i = center + 1; i <= right; i++) {
+            rightBorderSum += a[i];
+            if (rightBorderSum > maxRightBorderSum)
+                maxRightBorderSum = rightBorderSum;
+        }
+
+        return max3(maxLeftSum, maxRightSum,
+                maxLeftBorderSum + maxRightBorderSum);
+    }
+
+    /**
+     * Return maximum of three integers.
+     */
+    private static int max3(int a, int b, int c) {
+        return a > b ? a > c ? a : c : b > c ? b : c;
+    }
+
+    /**
+     * Driver for divide-and-conquer maximum contiguous
+     * subsequence sum algorithm.
+     */
+    public static int maxSubSum3(int[] a) {
+        return a.length > 0 ? maxSumRec(a, 0, a.length - 1) : 0;
+    }
+
+    /**
+     * Generates an array of integers of length n.
+     * <p>
+     * The elements in the array are in the range [-n, n].
+     * Initializes the random number generator using the passed seed to ensure reproducible results.
+     *
+     * @param n Array length
+     * @param seed Random number generator seed
+     * @return Generated integer array
+     */
+    private static int[] generateRandomArray(int n, long seed) {
+        Random r = new Random(seed);
+        int[] a = new int[n];
+        for (int i = 0; i < n; i++) {
+            a[i] = r.nextInt(2 * n + 1) - n;
+        }
+        return a;
+    }
+
+    /**
+     * This is a timing tool method.
+     * <p>
+     * The parameter is {@code Runnable}, which represents the code block to be timed.
+     * Use {@code System.nanoTime()} to obtain the start and end times and calculate the difference in milliseconds.
+     * Returns the execution time (in milliseconds).
+     *
+     * @param job The code block to be timed
+     * @return The execution time of the code block (in milliseconds)
+     */
+    private static double timeMs(Runnable job) {
+        long s = System.nanoTime();
+        job.run();
+        long e = System.nanoTime();
+        return (e - s) / 1_000_000.0;
+    }
+
+    /**
+     * This is a helper method for accumulating runtime across multiple experiments.
+     * <p>
+     * The parameter {@code accOrNaN} represents the accumulator, which may initially be NaN.
+     * The parameter {@code job} represents the code block to be executed and timed.
+     * Method logic: If {@code accOrNaN} is NaN, return the current time directly; otherwise, return the accumulated time.
+     * This method is used to facilitate calculating the average of multiple experiments.
+     *
+     * @param accOrNaN: The accumulator. Initially, NaN indicates the first time.
+     * @param job: The code block to be executed and timed.
+     * @return: The accumulated runtime.
+     */
+    private static double addTime(double accOrNaN, Runnable job) {
+        double t = timeMs(job);
+        return Double.isNaN(accOrNaN) ? t : (accOrNaN + t);
+    }
+
+    /**
+     * Simple test program.
+     */
+    public static void main(String[] args) {
+        // ===== d) Verify the four algorithms with an example array =====
+        int[] example = {4, -3, 5, -2, -1, 2, 6, -2};
+        int r1 = maxSubSum1(example);
+        int r2 = maxSubSum2(example);
+        int r3 = maxSubSum3(example);
+        int r4 = maxSubSum4(example);
+        System.out.println("Verify the four algorithms with an example array");
+        System.out.println("Example -> " + r1 + ", " + r2 + ", " + r3 + ", " + r4);
+        System.out.println();
+
+        // ===== e)–g) Timing experiment parameter settings =====
+        final int START_N = 8;
+        final int MAX_N = 65536;   // The upper limit given in the question
+        final int TRIALS = 3;       // Taking the average of multiple times for each scale can reduce fluctuations
+        final long SEED = 2025L;   // Random seed, ensures reproducible sequence of random numbers
+
+        // To prevent excessive runtime: set maximum sizes for O(n^3) and O(n^2) algorithms (adjust as needed)
+        final int MAX_FOR_N3 = 256;    // 256^3≈16.77 million times, which still takes some time; larger values are not recommended
+        final int MAX_FOR_N2 = 32768;  // 3.2e4^2≈10^9 level, which is already very slow; can be adjusted down
+
+        System.out.println("Test arrays of different sizes and measure runtime");
+        System.out.printf("%-8s %-16s %-16s %-16s %-16s%n",
+                "n", "O(n^3) ms", "O(n^2) ms", "O(nlogn) ms", "O(n) ms");
+
+        Random base = new Random(SEED);
+
+        // Test different sizes and measure runtime
+        for (int n = START_N; n <= MAX_N; n <<= 1) {
+            double t1 = Double.NaN;
+            double t2 = Double.NaN;
+            double t3 = 0.0;
+            double t4 = 0.0;
+
+            for (int trial = 0; trial < TRIALS; trial++) {
+                int[] a = generateRandomArray(n, base.nextLong()); // 值域 [-n, n]
+
+                // Limit the maximum size for O(n^3)/O(n^2) algorithms
+                if (n <= MAX_FOR_N3) {
+                    t1 = addTime(t1, () -> maxSubSum1(a)); // O(n^3)
+                }
+                if (n <= MAX_FOR_N2) {
+                    t2 = addTime(t2, () -> maxSubSum2(a)); // O(n^2)
+                }
+                t3 += timeMs(() -> maxSubSum3(a));        // O(n log n)
+                t4 += timeMs(() -> maxSubSum4(a));        // O(n)
+            }
+
+            // Output the average execution time of the four algorithms
+            String s1 = Double.isNaN(t1) ? "NA" : String.format("%.3f", t1 / TRIALS);
+            String s2 = Double.isNaN(t2) ? "NA" : String.format("%.3f", t2 / TRIALS);
+            String s3 = String.format("%.3f", t3 / TRIALS);
+            String s4 = String.format("%.3f", t4 / TRIALS);
+
+            System.out.printf("%-8d %-16s %-16s %-16s %-16s%n", n, s1, s2, s3, s4);
+        }
+    }
+}

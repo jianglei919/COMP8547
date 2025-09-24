@@ -1,0 +1,103 @@
+    private static final int START_N = 8;
+    private static final int MAX_N = 65536;
+    private static final int TRIALS = 3;
+    private static final long SEED = 2025L;
+
+    public static void main(String[] args) {
+        System.out.println("Prefix Averages Timing");
+        System.out.printf("%-8s %-16s %-16s%n", "n", "PA1 O(n^2) ms", "PA2 O(n) ms");
+
+        Random base = new Random(SEED);
+
+        for (int n = START_N; n <= MAX_N; n <<= 1) {
+            double t1 = 0, t2 = 0;
+            for (int trial = 0; trial < TRIALS; trial++) {
+                int[] a = generateRandomArray(n, base.nextLong());
+
+                t1 += timeMs(() -> prefixAverages1(a)); // O(n^2)
+                t2 += timeMs(() -> prefixAverages2(a)); // O(n)
+            }
+            System.out.printf("%-8d %-16.3f %-16.3f%n", n, t1 / TRIALS, t2 / TRIALS);
+        }
+    }
+
+    /**
+     * Function: Calculates the prefix mean, complexity O(n^2)
+     * <p>
+     * For each i, re-accumulates the sum of a[0..i] from the beginning and divides it by (i+1)
+     * Parameters: a Input array
+     * Return value: Array containing the prefix mean
+     */
+    public static double[] prefixAverages1(int[] a) {
+        int n = a.length;
+        double[] b = new double[n];
+        // Loop through each prefix of the array
+        for (int i = 0; i < n; i++) {
+            // Reset sum for each prefix
+            long sum = 0;
+            // Accumulate the sum of elements from a[0] to a[i]
+            for (int j = 0; j <= i; j++) {
+                sum += a[j];
+            }
+            // Compute average for prefix ending at i
+            b[i] = sum * 1.0 / (i + 1);
+        }
+        return b;
+    }
+
+    /**
+     * Method: Calculates the prefix mean, complexity O(n)
+     * <p>
+     * Uses a rolling prefix sum to avoid repeated calculations, adding a[i] to the previous sum each time
+     * Parameters: a Input array
+     * Return value: Array containing the prefix mean
+     */
+    public static double[] prefixAverages2(int[] a) {
+        int n = a.length;
+        double[] b = new double[n];
+        // Maintain a rolling sum to avoid repeated computation
+        long sum = 0;
+        for (int i = 0; i < n; i++) {
+            // Add current element to rolling sum
+            sum += a[i];
+            // Compute average for prefix ending at i
+            b[i] = sum * 1.0 / (i + 1);
+        }
+        return b;
+    }
+
+    /**
+     * Generates an array of integers of length n.
+     * <p>
+     * The elements in the array are in the range [-n, n].
+     * Initializes the random number generator using the passed seed to ensure reproducible results.
+     *
+     * @param n Array length
+     * @param seed Random number generator seed
+     * @return Generated integer array
+     */
+    private static int[] generateRandomArray(int n, long seed) {
+        Random r = new Random(seed);
+        int[] a = new int[n];
+        for (int i = 0; i < n; i++) {
+            a[i] = r.nextInt(2 * n + 1) - n;
+        }
+        return a;
+    }
+
+    /**
+     * This is a timing tool method.
+     * <p>
+     * The parameter is {@code Runnable}, which represents the code block to be timed.
+     * Use {@code System.nanoTime()} to obtain the start and end times and calculate the difference in milliseconds.
+     * Returns the execution time (in milliseconds).
+     *
+     * @param job The code block to be timed
+     * @return The execution time of the code block (in milliseconds)
+     */
+    private static double timeMs(Runnable job) {
+        long s = System.nanoTime();
+        job.run();
+        long e = System.nanoTime();
+        return (e - s) / 1_000_000.0;
+    }
