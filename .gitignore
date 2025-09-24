@@ -2,6 +2,18 @@
 out/
 !**/src/main/**/out/
 !**/src/test/**/out/
+.idea/
+*.iml
+*.iws
+*.ipr
+
+/out/
+/target/
+/build/
+/bin/
+
+# Logs
+*.log
 
 ### Eclipse ###
 .apt_generated
@@ -27,3 +39,13 @@ bin/
 
 ### Mac OS ###
 .DS_Store
+Thumbs.db
+
+# Maven
+.mvn/
+!/.mvn/wrapper/maven-wrapper.jar
+
+# Gradle
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
