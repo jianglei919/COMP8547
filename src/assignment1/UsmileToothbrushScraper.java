@@ -1,5 +1,6 @@
 package assignment1;
 
+import io.opentelemetry.api.internal.StringUtils;
 import org.openqa.selenium.*;
 import org.openqa.selenium.chrome.ChromeDriver;
 import org.openqa.selenium.chrome.ChromeOptions;
@@ -35,6 +36,8 @@ import java.util.regex.Pattern;
  * - 这是“稳健通用版”，适应 Shopify 常见主题；若后续发现更稳定的 CSS 选择器，可替换成“精准定位”。
  */
 public class UsmileToothbrushScraper {
+
+    private static final String INVALID_VALUE = "N/A";
 
     /* ====================== 可调配置（根据需要修改） ====================== */
 
@@ -176,7 +179,7 @@ public class UsmileToothbrushScraper {
                 // 基础识别
                 "brand", "product_name", "product_url", "image_url",
                 // 价格/库存
-                "price", "currency", "availability", "sku", "model", "variant_options",
+                "price", "currency", "availability", "variant_options",
                 // 推荐系统规格（尽量从页面/描述抽取，缺失为空）
                 "type", "brushing_modes", "battery_type", "battery_life", "intensity_levels",
                 "timer", "brush_head_compatibility", "smart_features", "pressure_sensor",
@@ -194,7 +197,7 @@ public class UsmileToothbrushScraper {
     private static void writeRow(BufferedWriter bw, Map<String, String> row) throws IOException {
         String[] cols = {
                 "brand", "product_name", "product_url", "image_url",
-                "price", "currency", "availability", "sku", "model", "variant_options",
+                "price", "currency", "availability", "variant_options",
                 "type", "brushing_modes", "battery_type", "battery_life", "intensity_levels",
                 "timer", "brush_head_compatibility", "smart_features", "pressure_sensor",
                 "uv_sanitizer", "travel_case", "water_resistance",
@@ -291,17 +294,16 @@ public class UsmileToothbrushScraper {
                 text(findOne(driver, By.cssSelector("h1")))
         ));
 
-        row.putIfAbsent("image_url", firstNonEmpty(
-                attr(findOne(driver, By.cssSelector("main picture img")), "src"),
-                attr(findOne(driver, By.cssSelector("img[src*='/products/']")), "src"),
-                attr(findOne(driver, By.cssSelector("img")), "src")
-        ));
+        // 主图 & 所有相册图（优先 /products/ 路径）
+        Map<String, String> imgInfo = extractImages(driver);
+        row.putIfAbsent("image_url", imgInfo.getOrDefault("primary", ""));   // 单张主图
 
         // 3) 变体/颜色等（通常在选项区）
         row.put("variant_options", collectVariantOptions(driver));
 
         // 4) 描述（取一个较长的段落）
-        row.putIfAbsent("description", pickLongParagraph(driver));
+        String description = pickLongParagraph(driver);
+        row.putIfAbsent("description", StringUtils.isNullOrEmpty(description) ? extractDescription(driver) : INVALID_VALUE);
 
         // 5) 可见价格/货币/库存（若 JSON-LD 没拿到）
         fillVisiblePriceCurrencyAvailability(driver, row);
@@ -359,9 +361,6 @@ public class UsmileToothbrushScraper {
             putIfEmpty(out, "brand",
                     firstMatch(json, "\"brand\"\\s*:\\s*\"([^\"]+)\""),
                     firstMatch(json, "\"brand\"\\s*:\\s*\\{[^}]*?\"name\"\\s*:\\s*\"([^\"]+)\""));
-
-            putIfEmpty(out, "sku", firstMatch(json, "\"sku\"\\s*:\\s*\"([^\"]+)\""));
-            putIfEmpty(out, "model", firstMatch(json, "\"model\"\\s*:\\s*\"([^\"]+)\""));
 
             // Offer: 价格、货币、库存状态
             putIfEmpty(out, "price", firstMatch(json, "\"price\"\\s*:\\s*\"?([0-9.]+)\"?"));
@@ -453,24 +452,315 @@ public class UsmileToothbrushScraper {
         return "";
     }
 
-    // 如果 JSON-LD 没价格，则从可见区抓一个价格/货币/库存状态
-    private static void fillVisiblePriceCurrencyAvailability(WebDriver driver, Map<String, String> row) {
-        if (!row.containsKey("price") || row.get("price").isEmpty()) {
-            String price = firstMatch(visibleText(driver), "([\\$CA]*\\s?[0-9]+[\\.,][0-9]{2})");
-            if (!price.isEmpty()) {
-                // 仅保留数字
-                String num = firstMatch(price.replace(",", "."), "([0-9]+\\.[0-9]{2})");
-                if (!num.isEmpty()) row.put("price", num);
-                // 货币：若带 CA$ 则标记 CAD
-                if (price.contains("CA$") || price.contains("C$")) row.put("currency", "CAD");
+    // ========== 取“主图 + 全部相册图”的稳妥方法（Shopify 优化） ==========
+    private static Map<String, String> extractImages(WebDriver driver) {
+        Map<String, String> out = new HashMap<>();
+        List<String> candidates = new ArrayList<>();
+
+        // A. 优先：JSON-LD 里的 image（通常是数组，且多为 /products/）
+        for (WebElement s : findAll(driver, By.cssSelector("script[type='application/ld+json']"))) {
+            String json = text(s);
+            if (json == null) continue;
+            // 提取数组或单值
+            java.util.regex.Matcher mArr = java.util.regex.Pattern
+                    .compile("\"image\"\\s*:\\s*\\[(.*?)\\]", java.util.regex.Pattern.CASE_INSENSITIVE | java.util.regex.Pattern.DOTALL)
+                    .matcher(json);
+            if (mArr.find()) {
+                String arr = mArr.group(1);
+                java.util.regex.Matcher mUrl = java.util.regex.Pattern
+                        .compile("\"(https?://[^\"]+)\"")
+                        .matcher(arr);
+                while (mUrl.find()) candidates.add(mUrl.group(1));
+            } else {
+                String single = firstMatch(json, "\"image\"\\s*:\\s*\"(https?://[^\"]+)\"");
+                if (!single.isEmpty()) candidates.add(single);
             }
         }
-        if (!row.containsKey("availability")) {
-            // 常见文案：In stock / Out of stock / Sold out
-            String vt = visibleText(driver).toLowerCase();
-            if (vt.contains("out of stock") || vt.contains("sold out")) row.put("availability", "OutOfStock");
-            else if (vt.contains("in stock")) row.put("availability", "InStock");
+
+        // B. OpenGraph（有时只给一张）
+        String og = attr(findOne(driver, By.cssSelector("meta[property='og:image']")), "content");
+        if (og != null && !og.isEmpty()) candidates.add(og);
+
+        // C. DOM 相册：只收集 “/products/” 路径的图片（排除 /files/ 营销图）
+        //   - 主画廊大图
+        for (WebElement img : findAll(driver, By.cssSelector("main img"))) {
+            String src = pickBestSrc(img);
+            if (src.contains("/cdn/shop/products/")) candidates.add(src);
         }
+        //   - 缩略图
+        for (WebElement img : findAll(driver, By.cssSelector("a[href*='/products/'] img, [data-media-id] img, .thumbnail-list__item img"))) {
+            String src = pickBestSrc(img);
+            if (src.contains("/cdn/shop/products/")) candidates.add(src);
+        }
+
+        // 去重 & 归一化
+        LinkedHashSet<String> dedup = new LinkedHashSet<>();
+        for (String u : candidates) {
+            if (u == null || u.isEmpty()) continue;
+            dedup.add(stripQuery(u));
+        }
+        List<String> imgs = new ArrayList<>(dedup);
+
+        // 选“主图”的策略：
+        // 1) 优先第一个 /products/ 的；
+        // 2) 若没有，则退回 JSON-LD/OG 的第一张；
+        // 3) 如果还没有，最后再允许 /files/ 的图。
+        String primary = "";
+        for (String u : imgs) {
+            if (u.contains("/cdn/shop/products/")) {
+                primary = u;
+                break;
+            }
+        }
+        if (primary.isEmpty() && !imgs.isEmpty()) primary = imgs.get(0);
+        if (primary.isEmpty()) {
+            // 兜底再扫一遍允许 /files/
+            String any = firstNonEmpty(
+                    attr(findOne(driver, By.cssSelector("main picture img")), "src"),
+                    attr(findOne(driver, By.cssSelector("img")), "src")
+            );
+            if (!any.isEmpty()) primary = stripQuery(any);
+        }
+
+        out.put("primary", primary);
+        out.put("all", String.join(" | ", imgs));
+        return out;
+    }
+
+    // 选择 img 的最佳 URL：优先 srcset 最大尺寸、再退回 data-src/data-original/src
+    private static String pickBestSrc(WebElement img) {
+        if (img == null) return "";
+        String srcset = attr(img, "srcset");
+        if (srcset != null && !srcset.isEmpty()) {
+            // 解析 srcset，挑最大宽度那张
+            String best = "";
+            int bestW = -1;
+            for (String part : srcset.split(",")) {
+                String[] kv = part.trim().split("\\s+");
+                if (kv.length >= 1) {
+                    String url = kv[0].trim();
+                    int w = -1;
+                    if (kv.length >= 2 && kv[1].endsWith("w")) {
+                        try {
+                            w = Integer.parseInt(kv[1].replace("w", "").trim());
+                        } catch (Exception ignored) {
+                        }
+                    }
+                    if (w > bestW) {
+                        bestW = w;
+                        best = url;
+                    }
+                }
+            }
+            if (!best.isEmpty()) return best;
+        }
+        String dsrc = attr(img, "data-src");
+        if (!dsrc.isEmpty()) return dsrc;
+        String dorig = attr(img, "data-original");
+        if (!dorig.isEmpty()) return dorig;
+        return attr(img, "src");
+    }
+
+    // ========== 更稳的商品描述抽取（针对 Usmile/Shopify） ==========
+// 思路：
+// 1) 先显式等待“描述区域”出现（包含你截图里的 .product-selling-points-container）
+// 2) 依次在多个“高命中率”选择器中找文本：
+//    - .product-selling-points-container .metafield-rich_text_field（你这页用的）
+//    - .product__description / [data-product-description] / #ProductAccordion-Description 等常见位置
+// 3) 取“可见且字符数较长”的段落（优先取最长），用 JS innerText 兜底确保拿到完整文本
+// 4) 统一清理空白并截断到 800 字
+    private static String extractDescription(WebDriver driver) {
+        // 1) 等“描述区域”出现（最多等 EXWAIT_TIMEOUT 秒）
+        By waitTarget = By.cssSelector(
+                ".product-selling-points-container, " +           // 你截图里的容器
+                        ".product__description, " +
+                        "[data-product-description], " +
+                        "#ProductAccordion-Description, .product-accordion"
+        );
+        try {
+            new WebDriverWait(driver, Duration.ofSeconds(EXWAIT_TIMEOUT))
+                    .until(ExpectedConditions.presenceOfElementLocated(waitTarget));
+        } catch (Exception ignore) {
+        }
+
+        // 2) 候选选择器（优先级从高到低）
+        String[] selectors = new String[]{
+                // 你的页面：简介在 metafield-rich_text_field 里
+                ".product-selling-points-container .metafield-rich_text_field",
+                ".product-selling-points-container p",
+
+                // 常见 Shopify 描述容器
+                ".product__description",
+                "[data-product-description]",
+                "#ProductAccordion-Description .accordion__content",
+                ".product-accordion .accordion__content",
+                "section[id*='MainProduct'] .rte",  // 富文本区
+                ".rte",
+
+                // 兜底：产品信息区内的较长段落
+                ".product-information__inner p, main p"
+        };
+
+        String best = "";
+        int bestLen = 0;
+
+        for (String css : selectors) {
+            List<WebElement> nodes = findAll(driver, By.cssSelector(css));
+            for (WebElement el : nodes) {
+                // 跳过不可见节点
+                if (!el.isDisplayed()) continue;
+
+                // 先用 Selenium 的 getText，再用 JS 的 innerText 兜底（有些主题 getText 截断）
+                String t = text(el);
+                if (t == null || t.trim().isEmpty()) {
+                    try {
+                        t = (String) ((JavascriptExecutor) driver)
+                                .executeScript("return (arguments[0].innerText||arguments[0].textContent)||'';", el);
+                    } catch (Exception ignored) {
+                    }
+                }
+                if (t == null) t = "";
+                // 清理多余空白
+                t = t.replace('\u00A0', ' ')              // 不断行空格 -> 普通空格
+                        .replaceAll("\\s+", " ")            // 连续空白合并
+                        .trim();
+
+                // 过滤掉太短/噪声段落（阈值 60 比原来的 80 更宽松）
+                if (t.length() >= 60) {
+                    if (t.length() > bestLen) {
+                        best = t;
+                        bestLen = t.length();
+                    }
+                }
+            }
+            // 已经拿到较长文本就不继续更低优先级的容器了
+            if (bestLen >= 80) break;
+        }
+
+        // 3) 兜底：meta[name=description]
+        if (best.isEmpty()) {
+            WebElement meta = findOne(driver, By.cssSelector("meta[name='description']"));
+            String c = attr(meta, "content");
+            if (c != null && c.trim().length() >= 40) best = c.trim();
+        }
+
+        // 4) 截断到 800 字以内，避免 CSV 过长
+        if (best.length() > 800) best = best.substring(0, 800) + " ...";
+        return best;
+    }
+
+    // 如果 JSON-LD 没价格，则从可见区抓一个价格/货币/库存状态
+    private static void fillVisiblePriceCurrencyAvailability(WebDriver driver, Map<String, String> row) {
+        // A. 抓现价（优先 <ins> 或 .amount 内的价格）
+        WebElement priceNode = findOne(driver, By.cssSelector("ins .amount, .price ins .amount, .price .amount, span.amount"));
+        String priceText = text(priceNode);
+
+        // 如果没取到，就全页正则兜底
+        if (priceText.isEmpty()) {
+            priceText = firstMatch(visibleText(driver), "(\\$?\\s*[0-9]+[\\.,][0-9]{2}\\s*(?:CAD|USD|CNY|EUR)?)");
+        }
+
+        if (!priceText.isEmpty()) {
+            // 提取数字部分
+            String num = firstMatch(priceText.replace(",", "."), "([0-9]+\\.[0-9]{2})");
+            if (!num.isEmpty()) row.put("price", num);
+
+            // 提取货币：看文本中是否包含 CAD / USD / CNY / EUR / ¥ / $ 等
+            String cur = "";
+            if (priceText.toUpperCase().contains("CAD")) cur = "CAD";
+            else if (priceText.toUpperCase().contains("USD")) cur = "USD";
+            else if (priceText.toUpperCase().contains("CNY") || priceText.contains("¥")) cur = "CNY";
+            else if (priceText.toUpperCase().contains("EUR") || priceText.contains("€")) cur = "EUR";
+            else if (priceText.contains("$")) cur = "USD"; // 默认美元符号当 USD（Usmile 加拿大站默认 CAD，但可改）
+            if (!cur.isEmpty()) row.put("currency", cur);
+        }
+
+        // B. 抓“划线原价”（<del> 内）
+        WebElement oldNode = findOne(driver, By.cssSelector("del .amount, .price del .amount, del span"));
+        String oldText = text(oldNode);
+        if (!oldText.isEmpty()) {
+            String oldNum = firstMatch(oldText.replace(",", "."), "([0-9]+\\.[0-9]{2})");
+            if (!oldNum.isEmpty()) row.put("price_original", oldNum);
+        }
+
+        // C. 抓库存状态（先用按钮法判断，再用可见文本兜底）
+        if (!row.containsKey("availability") || row.get("availability").isEmpty()) {
+            String byButton = detectAvailability(driver);
+            if (!byButton.isEmpty()) {
+                row.put("availability", byButton);
+            } else {
+                // 兜底：全页可见文本
+                String vt = visibleText(driver).toLowerCase();
+                if (vt.contains("out of stock") || vt.contains("sold out") || vt.contains("unavailable"))
+                    row.put("availability", "OutOfStock");
+                else if (vt.contains("in stock") || vt.contains("available"))
+                    row.put("availability", "InStock");
+            }
+        }
+    }
+
+    // ========== 基于“加入购物车按钮”判断的库存检测（Shopify 友好） ==========
+    private static String detectAvailability(WebDriver driver) {
+        // 常见按钮选择器（不同主题命名不一，尽量覆盖）
+        List<By> candidates = Arrays.asList(
+                By.cssSelector("button[name='add']"),
+                By.cssSelector("form[action*='/cart'] button[type='submit']"),
+                By.cssSelector(".product-form__submit"),
+                By.cssSelector("button#AddToCart, #AddToCart"),
+                By.cssSelector("button.add-to-cart, input.add-to-cart"),
+                By.cssSelector("[data-add-to-cart]"),
+                By.cssSelector("button[aria-label*='add to cart' i], a[aria-label*='add to cart' i]"),
+                By.cssSelector("button[title*='add to cart' i], a[title*='add to cart' i]"),
+                // 有些主题把“Sold out”也用同一选择器，只是禁用了
+                By.cssSelector(".product-form [type='submit']")
+        );
+
+        // 文案关键词（小写比较）
+        String[] soldOutKeys = new String[]{"sold out", "out of stock", "unavailable", "notify me", "pre-order", "preorder"};
+        String[] addKeys = new String[]{"add to cart", "add to bag", "buy now", "add to basket"};
+
+        // 遍历候选按钮，只要能命中有效状态就返回
+        for (By sel : candidates) {
+            for (WebElement btn : findAll(driver, sel)) {
+                if (btn == null || !btn.isDisplayed()) continue;
+
+                String txt = (text(btn) + " " + attr(btn, "aria-label") + " " + attr(btn, "title")).toLowerCase();
+
+                // 1) 明确售罄类文案
+                for (String k : soldOutKeys) {
+                    if (txt.contains(k)) return "OutOfStock";
+                }
+
+                // 2) 如果按钮被禁用（disabled/aria-disabled 或样式类名包含 sold-out）
+                boolean disabled = false;
+                try {
+                    disabled = btn.getAttribute("disabled") != null
+                            || "true".equalsIgnoreCase(attr(btn, "aria-disabled"))
+                            || attr(btn, "class").toLowerCase().contains("sold")
+                            || attr(btn, "class").toLowerCase().contains("disabled");
+                } catch (Exception ignore) {
+                }
+                if (disabled) return "OutOfStock";
+
+                // 3) 存在“加入购物车/立即购买”且按钮可点击 → 有货
+                for (String k : addKeys) {
+                    if (txt.contains(k)) return "InStock";
+                }
+            }
+        }
+
+        // 4) 进一步检查常见库存展示区（不少主题会显示 “In stock / Low stock / Sold out”）
+        WebElement inv = findOne(driver, By.cssSelector(".product__inventory, .inventory, [data-inventory]"));
+        String invText = inv == null ? "" : text(inv).toLowerCase();
+        if (!invText.isEmpty()) {
+            if (invText.contains("sold out") || invText.contains("out of stock") || invText.contains("unavailable"))
+                return "OutOfStock";
+            if (invText.contains("in stock") || invText.contains("available") || invText.contains("low stock"))
+                return "InStock";
+        }
+
+        // 5) 仍无法判断则返回空串（保持原逻辑兜底）
+        return INVALID_VALUE;
     }
 
     /* ====================== 规格推断（关键词法，缺了就留空） ====================== */
@@ -516,7 +806,7 @@ public class UsmileToothbrushScraper {
         Matcher m = Pattern.compile("(\\d+)\\s*(speeds?|intensity settings?|levels?)").matcher(txt);
         if (m.find()) return m.group(1);
         if (txt.contains("adjustable")) return "adjustable";
-        return "";
+        return INVALID_VALUE;
     }
 
     private static String inferTimer(String txt) {
