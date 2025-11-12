@@ -1,0 +1,90 @@
+
+/**
+ * Text Analysis using Java Regex
+ * ------------------------------------------------
+ * This program reads all .txt files inside "text_pages" folder,
+ * and searches for:
+ *  1. Phone numbers
+ *  2. Email addresses
+ *  3. URLs
+ *
+ * Output: print all matches to console (and optionally write to result.txt)
+ */
+public class TextAnalyzer {
+
+    // Define folder containing text files
+    private static final String TEXT_FOLDER = "text_pages";
+
+    // Regex patterns
+    private static final Pattern PHONE_PATTERN = Pattern.compile(
+            "(?:\\+?1[-.\\s]?)?(?:\\(?\\d{3}\\)?[-.\\s]?)\\d{3}[-.\\s]?\\d{4}"
+    );
+
+    private static final Pattern EMAIL_PATTERN = Pattern.compile(
+            "[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,6}");
+
+    private static final Pattern URL_PATTERN = Pattern.compile(
+            "https?://[\\w.-]+(?:\\.[\\w.-]+)+[/\\w._~:/?#[\\\\]@!$&'()*+,;=\\-]*"
+    );
+
+    public static void main(String[] args) {
+        try {
+            File folder = new File(TEXT_FOLDER);
+            if (!folder.exists() || !folder.isDirectory()) {
+                System.err.println("Folder not found: " + TEXT_FOLDER);
+                return;
+            }
+
+            // List all .txt files
+            File[] txtFiles = folder.listFiles((dir, name) -> name.toLowerCase().endsWith(".txt"));
+            if (txtFiles == null || txtFiles.length == 0) {
+                System.err.println("No .txt files found in folder: " + TEXT_FOLDER);
+                return;
+            }
+
+            // Output results to both console and result file
+            Path output = Paths.get("text_analysis_result.txt");
+            BufferedWriter writer = Files.newBufferedWriter(output);
+            writer.write("=== Regex Text Analysis Results ===\n\n");
+
+            for (File file : txtFiles) {
+                System.out.println("Processing: " + file.getName());
+                writer.write("File: " + file.getName() + "\n");
+
+                String content = Files.readString(file.toPath());
+
+                findAndWriteMatches(writer, "Phone Numbers", PHONE_PATTERN, content);
+                findAndWriteMatches(writer, "Emails", EMAIL_PATTERN, content);
+                findAndWriteMatches(writer, "URLs", URL_PATTERN, content);
+
+                writer.write("\n--------------------------------------\n");
+            }
+
+            writer.close();
+            System.out.println("\nAnalysis complete! Results saved to text_analysis_result.txt");
+
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    // Utility: find all matches for a pattern
+    private static void findAndWriteMatches(BufferedWriter writer, String label, Pattern pattern, String text)
+            throws IOException {
+        Matcher matcher = pattern.matcher(text);
+        List<String> matches = new ArrayList<>();
+        while (matcher.find()) {
+            matches.add(matcher.group());
+        }
+
+        writer.write(label + " (" + matches.size() + " found):\n");
+        if (matches.isEmpty()) {
+            writer.write("  None found.\n");
+        } else {
+            for (String m : matches) {
+                writer.write("  " + m + "\n");
+            }
+        }
+        writer.write("\n");
+    }
+}
