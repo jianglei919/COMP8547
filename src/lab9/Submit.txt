@@ -1,0 +1,104 @@
+// Task1----------------------
+// Main method in BackTSP.java
+    public static void main(String[] args) throws Exception {
+
+        // List of sample files to be tested for the Backtracking TSP algorithm.
+        // Each file represents a different number of cities (from 6 to 13).
+        String[] files = {
+                "intractability/RoadSetSample6.txt",
+                "intractability/RoadSetSample7.txt",
+                "intractability/RoadSetSample8.txt",
+                "intractability/RoadSetSample9.txt",
+                "intractability/RoadSetSample10.txt",
+                "intractability/RoadSetSample11.txt",
+                "intractability/RoadSetSample12.txt",
+                "intractability/RoadSetSample13.txt"
+        };
+
+        System.out.println("===== TASK 1: Backtracking TSP =====");
+
+        // Loop through each dataset file and execute the TSP algorithm
+        for (String filename : files) {
+            File file = new File(filename);
+
+            // If the file does not exist, skip to the next one
+            if (!file.exists()) {
+                System.out.println("The " + filename + " not found, skipping...");
+                continue;
+            }
+
+            // Read the input data (number of cities, city names & distances)
+            Scanner inputData = new Scanner(file);
+
+            // Init the data structures inside BackTSP Class
+            BackTSP.init(inputData);
+
+            // Record the starting time with nanoTime
+            long start = System.nanoTime();
+
+            // Run the backtracking TSP algorithm to compute all possible tours
+            BackTSP.tour();
+
+            // Record the ending time in nanoseconds
+            long end = System.nanoTime();
+
+            // Print the total execution time in milliseconds for each dataset
+            System.out.printf("%s total time: %.3f ms%n", filename, (end - start) / 1e6);
+        }
+    }
+
+// Task2----------------------
+// Main method in DijkstraSP.java
+    public static void main(String[] args) {
+
+        // List of input graph files used to test Dijkstra's Shortest Path algorithm.
+        // Each file contains an edge-weighted directed graph of different sizes.
+        String[] files = {"1000EWG.txt", "mediumEWG.txt", "10000EWG.txt"};
+
+        System.out.println("===== TASK 2: Dijkstra Shortest Path =====");
+
+        // Traverse each graphic file and measure execution time
+        for (String filename : files) {
+            try {
+                // Read the graph data using Princeton's 'In' class.
+                // Each file describes a weighted directed graph (EdgeWeightedDigraph).
+                EdgeWeightedDigraph G = new EdgeWeightedDigraph(new In(filename));
+
+                // Record the start time before running the algorithm
+                long start = System.nanoTime();
+
+                // Execute Dijkstra’s algorithm starting from vertex 0
+                new DijkstraSP(G, 0);
+
+                // Record the end time after the algorithm finishes
+                long end = System.nanoTime();
+
+                // Print the total execution time (converted from nanoseconds to milliseconds)
+                System.out.printf("%s total time: %.3f ms%n", filename, (end - start) / 1e6);
+
+            } catch (Exception e) {
+                // If the file is missing or cannot be read, display an error message
+                System.out.println(filename + " not found or error: " + e.getMessage());
+            }
+        }
+    }
+
+===== TASK 1: Backtracking TSP =====
+intractability/RoadSetSample6.txt total time: 1.031 ms
+intractability/RoadSetSample7.txt total time: 0.581 ms
+intractability/RoadSetSample8.txt total time: 2.697 ms
+intractability/RoadSetSample9.txt total time: 3.296 ms
+intractability/RoadSetSample10.txt total time: 28.177 ms
+intractability/RoadSetSample11.txt total time: 187.725 ms
+intractability/RoadSetSample12.txt total time: 1860.330 ms
+
+Exception: java.lang.OutOfMemoryError thrown from the UncaughtExceptionHandler in thread "main"
+
+Process finished with exit code 1
+
+===== TASK 2: Dijkstra Shortest Path =====
+mediumEWG.txt total time: 1.215 ms
+1000EWG.txt total time: 1.042 ms
+10000EWG.txt total time: 6.827 ms
+
+Process finished with exit code 0
